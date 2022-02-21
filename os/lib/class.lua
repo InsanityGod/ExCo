@@ -2,21 +2,19 @@ local raw = require "raw"
 local _type = raw.ensureRaw("type", type)
 local type
 
-local json = require "json"
-
 local rawequal = rawequal
 local rawget = rawget
 
 
 local classes = {}
 
-local function isRealClass(class)
+local function isClass(class)
     return rawequal(classes[class.__name], class)
 end
 
 local function isInstanceOf(obj, class)
     local obj_class = obj.__class
-    if isRealClass(obj_class) then
+    if isClass(obj_class) then
         return obj_class:__extends(class) -- TODO interfaces
     end
     return false
@@ -24,7 +22,7 @@ end
 
 local function sameClass(a, b)
     local a_class = a.__class
-    if a_class and isRealClass(a_class) then
+    if a_class and isClass(a_class) then
         return rawequal(a_class, b.__class)
     end
     return false
@@ -47,7 +45,7 @@ local function relay_comp(name)
                 return func(a, b)
             end
         end
-        error("not supported")
+        error "not supported"
     end
 end
 
@@ -58,7 +56,7 @@ local function relay_math(name)
             return func(instance, o)
         end
 
-        error("not supported")
+        error "not supported"
     end
 end
 
@@ -79,31 +77,29 @@ local type_instance_meta = {
         local index = self.__class.__index
 
         if index ~= nil then
-            if _type(index) == "function" then return index(self, k) end
-
-            return index[k]
+            return index(self, k)
         end
     end,
-    __tostring = relay("__tostring"),
-    __call = relay("__call"),
+    __tostring = relay "__tostring",
+    __call = relay "__call",
 
-    __eq = relay_comp("__eq"),
-    __lt = relay_comp("__lt"),
-    __le = relay_comp("__le"),
+    __eq = relay_comp "__eq",
+    __lt = relay_comp "__lt",
+    __le = relay_comp "__le",
 
     --TODO test below
 
-    __unm = relay_math("__unm"),
+    __unm = relay_math "__unm",
 
-    __add = relay_math("__add"),
-    __sub = relay_math("__sub"),
-    __mul = relay_math("__mul"),
-    __div = relay_math("__div"),
-    __mod = relay_math("__mod"),
-    __pow = relay_math("__pow"),
-    __concat = relay_math("__concat"),
+    __add = relay_math "__add",
+    __sub = relay_math "__sub",
+    __mul = relay_math "__mul",
+    __div = relay_math "__div",
+    __mod = relay_math "__mod",
+    __pow = relay_math "__pow",
+    __concat = relay_math "__concat",
 
-    __idiv = relay_math("__idiv"), -- lua 5.3
+    __idiv = relay_math "__idiv" , -- lua 5.3
 }
 
 local function create_type(name, table)
@@ -112,8 +108,6 @@ local function create_type(name, table)
     table.__inherit = table.__inherit or type
     return setmetatable(table, type_instance_meta)
 end
-
-local jsonIgnore = {}
 
 type = setmetatable({
     classes = setmetatable({},{
@@ -158,38 +152,27 @@ type = setmetatable({
         return false -- Two different types are not allowed to be the same
     end,
     __lt = function (a, b)
-        if rawequal(a.__class, type) then
+        if isClass(a) then
             return b:__extends(a)
         end
-        error("not supported")
+        error "not supported"
     end,
     __le = function (a,b)
-        if rawequal(a.__class, type) then
+        if isClass(a) then
             return b:__extends(a) -- Two different types are not allowed to be the same
         end
+        error "not supported"
     end,
     __name="type",
     isInstanceOf = isInstanceOf,
-    isRealClass=isRealClass,
+    isClass=isClass,
     sameClass=sameClass,
-
-    __fromJSON = function (cls, v)
-        v.__class = cls
-        setmetatable(v, type_instance_meta)
-        return v
-    end,
-    __toJSON = function (self, pretty, tabLevel, tTracking)
-        if rawequal(self.__class, type) then
-            return json.encoders.string(self.__name)
-        end
-        return json.encoders.table(self, pretty, tabLevel, tTracking, false, jsonIgnore)
-    end
 },{
     __call = function (self, v)
         local real_type = _type(v)
         if real_type == "table" then
             local class = v.__class
-            if isRealClass(class) then
+            if class and isClass(class) then
                 return class
             end
         end
@@ -198,14 +181,30 @@ type = setmetatable({
 })
 
 classes["type"] = type
-_G.type = type
 
 --JSON
+package.loaded["class"] = type
+local json = require "json"
+
+ function type.__fromJSON(cls, v)
+    v.__class = cls
+    setmetatable(v, type_instance_meta)
+    return v
+end
+
+type.__jsonIgnore = {}
+
+function type.__toJSON(self, pretty, tabLevel, tTracking)
+    if isClass(self) then
+        return json.encoders.string(self.__name)
+    end
+    return json.encoders.table(self, pretty, tabLevel, tTracking, false, self.__class.__jsonIgnore)
+end
 
 json.commonEncoders[#json.commonEncoders+1] = function (valType, val, pretty, tabLevel, tTracking)
     if _type(val) == "table" then
         local class = val.__class
-        if isRealClass(class) then
+        if isClass(class) then
             return class.__toJSON(val, pretty, tabLevel, tTracking)
         end
     end

@@ -1,6 +1,6 @@
 local raw = require "raw"
---local type = raw.ensureRaw("type", type)
-
+local fs = require "filesystem"
+local type = require "class"
 local json = {}
 
 ------------------------------------------------------------------ utils
